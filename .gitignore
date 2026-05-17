@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.local
+.env.*.local
+*.tar
+data.json
+data/*
+!data/.gitkeep
+docs/gs098_*
+docs/README.md
+docs/superpowers/
+resources/
+tech_requirements/

@@ -1,0 +1,14 @@
+services:
+  mfg-data-sharing:
+    image: mfg-data-sharing:latest
+    platform: linux/amd64
+    container_name: mfg-data-sharing
+    ports:
+      - "8025:8000"
+    environment:
+      MFG_USERNAME: ${MFG_USERNAME:?Set MFG_USERNAME in .env}
+      MFG_PASSWORD: ${MFG_PASSWORD:?Set MFG_PASSWORD in .env}
+      MFG_DATA_PATH: /app/data/data.json
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
