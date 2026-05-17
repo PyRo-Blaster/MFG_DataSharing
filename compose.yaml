@@ -1,0 +1,15 @@
+services:
+  mfg-data-sharing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mfg-data-sharing
+    ports:
+      - "8025:8000"
+    environment:
+      MFG_USERNAME: ${MFG_USERNAME:?Set MFG_USERNAME in .env}
+      MFG_PASSWORD: ${MFG_PASSWORD:?Set MFG_PASSWORD in .env}
+      MFG_DATA_PATH: /app/data/data.json
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

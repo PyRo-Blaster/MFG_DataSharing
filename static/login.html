@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MFG Data Sharing Login</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root {
+    --bg: #f8f7f4;
+    --panel: rgba(255, 255, 255, 0.92);
+    --text: #1a1815;
+    --muted: #6b6560;
+    --border: #e2ddd5;
+    --accent-violet: #6d5bd0;
+    --accent-blue: #2563eb;
+    --accent-gold: #c59b2a;
+    --danger-bg: #fff2f2;
+    --danger-border: #f3c8c4;
+    --danger-text: #b42318;
+    --shadow: 0 24px 60px rgba(34, 24, 18, 0.1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background:
+      radial-gradient(circle at top right, rgba(109, 91, 208, 0.14), transparent 34%),
+      radial-gradient(circle at bottom left, rgba(37, 99, 235, 0.12), transparent 30%),
+      linear-gradient(180deg, #fbfaf7 0%, var(--bg) 100%);
+    color: var(--text);
+    font-family: "DM Sans", Arial, sans-serif;
+  }
+  .card {
+    width: min(100%, 430px);
+    padding: 30px;
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(14px);
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 30px;
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-violet), var(--accent-blue), var(--accent-gold));
+  }
+  h1 {
+    margin: 0 0 10px;
+    font-size: 29px;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+  }
+  p {
+    margin: 0 0 18px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .message {
+    display: none;
+    margin: 0 0 16px;
+    padding: 11px 13px;
+    border: 1px solid var(--danger-border);
+    border-radius: 12px;
+    background: var(--danger-bg);
+    color: var(--danger-text);
+    font-size: 14px;
+  }
+  .message.show { display: block; }
+  label {
+    display: block;
+    margin: 14px 0 6px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: #fff;
+    color: var(--text);
+    font-size: 15px;
+  }
+  button {
+    width: 100%;
+    margin-top: 18px;
+    border: 0;
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: linear-gradient(135deg, var(--accent-violet), var(--accent-blue));
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
+  }
+  .foot {
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="eyebrow">Internal Access</div>
+    <h1>MFG Data Sharing</h1>
+    <p>Sign in with the shared username and password before viewing the dashboard or uploading process data.</p>
+    <div class="message" id="messageBox"></div>
+    <form method="post" action="/login">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required>
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+      <button type="submit">Login</button>
+    </form>
+    <div class="foot">Internal use only. Visual style matches the dashboard palette with subtle violet, blue, and gold accents.</div>
+  </main>
+  <script>
+    const messageBox = document.getElementById("messageBox");
+    const params = new URLSearchParams(window.location.search);
+    const queryMessage = params.get("message");
+    const navigationEntry = performance.getEntriesByType("navigation")[0];
+    const failedLoginMessage = "Username or password is incorrect. Please try again.";
+
+    if (queryMessage) {
+      messageBox.textContent = queryMessage;
+      messageBox.classList.add("show");
+    } else if (navigationEntry && navigationEntry.responseStatus === 401) {
+      messageBox.textContent = failedLoginMessage;
+      messageBox.classList.add("show");
+    }
+  </script>
+</body>
+</html>

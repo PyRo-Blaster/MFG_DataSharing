@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MFG Data Sharing</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root {
+    --bg: #f8f7f4;
+    --surface: rgba(255, 255, 255, 0.9);
+    --surface-alt: #f1ede7;
+    --border: #e2ddd5;
+    --text-1: #1a1815;
+    --text-2: #6b6560;
+    --text-3: #938c84;
+    --accent: #1f4fd6;
+    --accent-soft: #eef3ff;
+    --accent-gold: #c59b2a;
+    --accent-violet: #6d5bd0;
+    --success: #15803d;
+    --danger: #b91c1c;
+    --radius: 14px;
+    --shadow: 0 18px 40px rgba(33, 24, 16, 0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top right, rgba(109, 91, 208, 0.08), transparent 30%),
+      radial-gradient(circle at bottom left, rgba(37, 99, 235, 0.06), transparent 26%),
+      linear-gradient(180deg, #fbfaf7 0%, var(--bg) 100%);
+    color: var(--text-1);
+    font-family: "DM Sans", system-ui, sans-serif;
+    line-height: 1.5;
+  }
+  .shell {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 20px 28px 24px;
+  }
+  .hero {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: clamp(24px, 3vw, 30px);
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+  }
+  .hero-meta {
+    min-width: 178px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+  }
+  .hero-meta-label {
+    color: var(--text-3);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .hero-meta-value {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--text-1);
+  }
+  .controls {
+    display: block;
+    margin-top: 18px;
+  }
+  .panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+  }
+  .upload-card {
+    padding: 16px;
+  }
+  .upload-card h2 {
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .upload-card p {
+    color: var(--text-2);
+    font-size: 12px;
+  }
+  .section-caption {
+    margin-bottom: 8px;
+    color: var(--text-3);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .upload-form {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .file-picker {
+    border: 1px dashed #c8beb3;
+    border-radius: 12px;
+    background: #fcfbf8;
+    padding: 14px;
+  }
+  .file-picker label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    color: var(--text-1);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .file-picker input {
+    display: block;
+    width: 100%;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+  .file-name {
+    min-height: 18px;
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .button-row,
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 15px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-alt);
+    color: var(--text-1);
+    font: 600 12px "DM Sans", system-ui, sans-serif;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .btn:hover {
+    background: #e8e2d8;
+    transform: translateY(-1px);
+  }
+  .btn.primary {
+    border-color: var(--text-1);
+    background: var(--text-1);
+    color: #fff;
+  }
+  .btn.primary:hover {
+    background: #2a2622;
+  }
+  .status {
+    min-height: 44px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #f5f2ec;
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 13px;
+  }
+  .status.success {
+    background: #eff8f1;
+    border-color: #bbdfc0;
+    color: var(--success);
+  }
+  .status.error {
+    background: #fff3f2;
+    border-color: #f5c7c3;
+    color: var(--danger);
+  }
+  .legend {
+    margin-bottom: 14px;
+  }
+  .legend-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text-1);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .legend-pill:hover { transform: translateY(-1px); }
+  .legend-pill.off { opacity: 0.38; }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  }
+  .chart-card {
+    overflow: hidden;
+  }
+  .chart-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 18px 0;
+  }
+  .chart-title {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .chart-tag {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+  }
+  .chart-wrap {
+    position: relative;
+    height: 258px;
+    padding: 8px 12px 14px;
+  }
+  .footer {
+    margin-top: 18px;
+    color: var(--text-3);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    text-align: center;
+  }
+  @media (max-width: 1024px) {
+  }
+  @media (max-width: 760px) {
+    .shell {
+      padding: 18px 16px 24px;
+    }
+    .hero-meta {
+      min-width: 140px;
+    }
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <section class="hero">
+    <h1>GMP MFG Data Sharing</h1>
+    <div class="hero-meta panel">
+      <div class="hero-meta-label">Last Sync</div>
+      <div class="hero-meta-value" id="lastSyncLabel">Waiting for first sync</div>
+    </div>
+  </section>
+
+  <section class="legend" id="legend"></section>
+  <section class="grid" id="chartGrid"></section>
+
+  <section class="controls">
+    <div class="panel upload-card">
+      <h2>Upload CSV</h2>
+      <div class="section-caption">For PM Operation</div>
+      <p>Upload a UTF-8 CSV template. Non-empty values merge into 500L / 2L / satellite, while 50L stays read-only.</p>
+      <form class="upload-form" id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+        <div class="file-picker">
+          <label for="csvFile">Choose CSV</label>
+          <input id="csvFile" name="file" type="file" accept=".csv,.txt" required>
+          <div class="file-name" id="fileName">No file selected</div>
+        </div>
+        <div class="button-row">
+          <button class="btn primary" type="submit">Upload CSV</button>
+          <button class="btn" id="refreshBtn" type="button">Refresh Now</button>
+          <a class="btn" href="/static/data_template.csv" download>Download CSV Template</a>
+          <a class="btn" href="/logout">Logout</a>
+        </div>
+        <div class="status" id="statusMsg">Waiting for first sync</div>
+      </form>
+    </div>
+  </section>
+
+  <div class="footer">Manufacturing Process Data · Internal / Confidential</div>
+</div>
+
+<script>
+const PARAM_KEYS = ["vcd", "viability", "glucose", "lactate", "nh4", "ph", "pco2", "osm"];
+const PARAM_META = {
+  vcd:       { title: "Viable Cell Density", unit: "x10^6/mL", tag: "VCD",  yLabel: "VCD (x10^6/mL)",  fmt: value => value.toFixed(2) },
+  viability: { title: "Cell Viability",     unit: "%",        tag: "VIA",  yLabel: "Viability (%)",    fmt: value => value.toFixed(1), yMin: 75 },
+  glucose:   { title: "Glucose",            unit: "g/L",      tag: "Gluc", yLabel: "Glucose (g/L)",    fmt: value => value.toFixed(2) },
+  lactate:   { title: "Lactate",            unit: "g/L",      tag: "Lac",  yLabel: "Lactate (g/L)",    fmt: value => value.toFixed(2) },
+  nh4:       { title: "Ammonium",           unit: "mmol/L",   tag: "NH4+", yLabel: "NH4+ (mmol/L)",    fmt: value => value.toFixed(2) },
+  ph:        { title: "Offline pH",         unit: "",         tag: "pH",   yLabel: "pH",               fmt: value => value.toFixed(3), yMin: 6.5, yMax: 7.5 },
+  pco2:      { title: "Dissolved CO2",      unit: "mmHg",     tag: "pCO2", yLabel: "pCO2 (mmHg)",     fmt: value => value.toFixed(1) },
+  osm:       { title: "Osmolality",         unit: "mOsm/kg",  tag: "OSM",  yLabel: "OSM (mOsm/kg)",   fmt: value => value.toFixed(0) }
+};
+const BATCH_META = {
+  "50L":       { label: "50 L Pilot",    color: "#2563eb", dash: [], width: 2.5, pointRadius: 3 },
+  "2L":        { label: "2 L Scout BR",  color: "#6d5bd0", dash: [6, 4], width: 2, pointRadius: 3 },
+  "satellite": { label: "5 L Satellite", color: "#c59b2a", dash: [3, 4], width: 2, pointRadius: 4 },
+  "500L":      { label: "500 L GMP",     color: "#d0472c", dash: [], width: 3, pointRadius: 5 }
+};
+
+const charts = {};
+const visibleBatches = { "50L": true, "2L": true, "satellite": true, "500L": true };
+let dataStore = null;
+
+function setStatus(message, tone = "") {
+  const element = document.getElementById("statusMsg");
+  element.textContent = message;
+  element.className = "status";
+  if (tone) {
+    element.classList.add(tone);
+  }
+}
+
+function updateLastSync(text) {
+  document.getElementById("lastSyncLabel").textContent = text;
+}
+
+function buildLegend() {
+  const legend = document.getElementById("legend");
+  legend.innerHTML = "";
+  Object.entries(BATCH_META).forEach(([batchKey, meta]) => {
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className = "legend-pill";
+    pill.innerHTML = `<span class="legend-dot" style="background:${meta.color}"></span>${meta.label}`;
+    pill.addEventListener("click", () => {
+      visibleBatches[batchKey] = !visibleBatches[batchKey];
+      pill.classList.toggle("off", !visibleBatches[batchKey]);
+      renderCharts();
+    });
+    legend.appendChild(pill);
+  });
+}
+
+function datasetFor(batchKey, paramKey) {
+  const meta = BATCH_META[batchKey];
+  const values = dataStore[batchKey][paramKey] || [];
+  const points = [];
+  values.forEach((value, day) => {
+    if (value != null) {
+      points.push({ x: day, y: value });
+    }
+  });
+  return {
+    label: meta.label,
+    data: points,
+    borderColor: meta.color,
+    backgroundColor: `${meta.color}16`,
+    borderDash: meta.dash,
+    borderWidth: meta.width,
+    pointRadius: meta.pointRadius,
+    pointHoverRadius: 6,
+    pointBackgroundColor: meta.color,
+    pointBorderColor: "#ffffff",
+    pointBorderWidth: 1.5,
+    hidden: !visibleBatches[batchKey],
+    tension: 0.25,
+    fill: false,
+    spanGaps: true
+  };
+}
+
+function ensureCharts() {
+  const chartGrid = document.getElementById("chartGrid");
+  if (Object.keys(charts).length) {
+    return;
+  }
+
+  PARAM_KEYS.forEach(paramKey => {
+    const meta = PARAM_META[paramKey];
+    const card = document.createElement("article");
+    card.className = "panel chart-card";
+    card.innerHTML = `
+      <div class="chart-head">
+        <div class="chart-title">${meta.title}</div>
+        <div class="chart-tag">${meta.tag}${meta.unit ? ` · ${meta.unit}` : ""}</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart-${paramKey}"></canvas>
+      </div>
+    `;
+    chartGrid.appendChild(card);
+
+    charts[paramKey] = new Chart(document.getElementById(`chart-${paramKey}`), {
+      type: "line",
+      data: { datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            type: "linear",
+            min: 0,
+            max: 17,
+            ticks: {
+              stepSize: 1,
+              callback: value => `D${value}`,
+              color: "#938c84",
+              font: { family: "JetBrains Mono", size: 10 }
+            },
+            grid: { color: "#efe9df", drawTicks: false },
+            title: {
+              display: true,
+              text: "Culture Day",
+              color: "#6b6560",
+              font: { family: "DM Sans", size: 11, weight: "600" }
+            }
+          },
+          y: {
+            beginAtZero: meta.yMin == null,
+            suggestedMin: meta.yMin,
+            suggestedMax: meta.yMax,
+            ticks: {
+              color: "#938c84",
+              font: { family: "JetBrains Mono", size: 10 },
+              maxTicksLimit: 7
+            },
+            grid: { color: "#efe9df", drawTicks: false },
+            title: {
+              display: true,
+              text: meta.yLabel,
+              color: "#6b6560",
+              font: { family: "DM Sans", size: 11, weight: "600" }
+            }
+          }
+        }
+      }
+    });
+  });
+}
+
+function renderCharts() {
+  if (!dataStore) {
+    return;
+  }
+  ensureCharts();
+  PARAM_KEYS.forEach(paramKey => {
+    charts[paramKey].data.datasets = Object.keys(BATCH_META).map(batchKey => datasetFor(batchKey, paramKey));
+    charts[paramKey].update();
+  });
+}
+
+function readUploadCountFromUrl(url) {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return parsed.searchParams.get("uploaded");
+  } catch (error) {
+    return null;
+  }
+}
+
+async function readErrorMessage(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const payload = await response.json();
+    return payload.detail || `Request failed with ${response.status}`;
+  }
+  return `Request failed with ${response.status}`;
+}
+
+async function fetchData(showStatus = false) {
+  try {
+    const response = await fetch("/api/data", { cache: "no-store" });
+    if (response.status === 401) {
+      window.location.href = "/login?message=session%20%E5%B7%B2%E8%BF%87%E6%9C%9F%EF%BC%8C%E8%AF%B7%E9%87%8D%E6%96%B0%E7%99%BB%E5%BD%95";
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
+    dataStore = await response.json();
+    renderCharts();
+    const updatedAt = dataStore.updated_at || new Date().toISOString();
+    updateLastSync(updatedAt);
+    if (showStatus) {
+      setStatus(`Refreshed from server data at ${updatedAt}`, "success");
+    } else {
+      setStatus(`Latest dataset timestamp: ${updatedAt}`);
+    }
+  } catch (error) {
+    setStatus(error.message || "Failed to load dashboard data.", "error");
+  }
+}
+
+async function handleUpload(event) {
+  event.preventDefault();
+
+  const fileInput = document.getElementById("csvFile");
+  if (!fileInput.files.length) {
+    setStatus("Choose a CSV file before uploading.", "error");
+    return;
+  }
+
+  const formData = new FormData(event.currentTarget);
+  setStatus("Uploading CSV and merging server-side data...", "");
+
+  try {
+    const response = await fetch("/upload", {
+      method: "POST",
+      body: formData,
+      redirect: "follow"
+    });
+
+    if (response.redirected && response.url.includes("/login")) {
+      window.location.href = response.url;
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
+    const uploaded = readUploadCountFromUrl(response.url);
+    fileInput.value = "";
+    document.getElementById("fileName").textContent = "No file selected";
+    await fetchData(false);
+    setStatus(
+      uploaded ? `Upload complete. ${uploaded} cells merged into data.json.` : "Upload complete.",
+      "success"
+    );
+  } catch (error) {
+    setStatus(error.message || "Upload failed.", "error");
+  }
+}
+
+function syncQueryState() {
+  const params = new URLSearchParams(window.location.search);
+  const uploaded = params.get("uploaded");
+  if (uploaded) {
+    setStatus(`Upload complete. ${uploaded} cells merged into data.json.`, "success");
+    params.delete("uploaded");
+    const next = params.toString();
+    const url = `${window.location.pathname}${next ? `?${next}` : ""}`;
+    window.history.replaceState({}, "", url);
+  }
+}
+
+document.getElementById("csvFile").addEventListener("change", event => {
+  const file = event.target.files[0];
+  document.getElementById("fileName").textContent = file ? file.name : "No file selected";
+});
+document.getElementById("uploadForm").addEventListener("submit", handleUpload);
+document.getElementById("refreshBtn").addEventListener("click", () => fetchData(true));
+
+buildLegend();
+syncQueryState();
+fetchData(false);
+</script>
+</body>
+</html>
