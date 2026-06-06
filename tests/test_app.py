@@ -166,6 +166,88 @@ class MFGDataSharingAppTests(unittest.TestCase):
         self.assertNotIn("Minimal dashboard for shared login, CSV upload, and chart review.", response.text)
         self.assertLess(response.text.index('id="chartGrid"'), response.text.index('class="panel upload-card"'))
 
+    def test_health_endpoint_is_public_and_reports_ok(self):
+        response = self.client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertTrue(payload["data_ok"])
+        self.assertIn("updated_at", payload)
+
+    def test_export_requires_login(self):
+        response = self.client.get("/api/export")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_export_returns_csv_that_round_trips_through_upload(self):
+        self.login()
+        self.client.post(
+            "/upload",
+            files={
+                "file": (
+                    "data.csv",
+                    "Batch,Parameter,D0,D1\n500L_GMP,VCD,0.987,2.10\n".encode("utf-8"),
+                    "text/csv",
+                )
+            },
+            follow_redirects=False,
+        )
+
+        response = self.client.get("/api/export")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response.headers["content-type"])
+        self.assertIn("attachment", response.headers["content-disposition"])
+        self.assertIn("500L_GMP,VCD", response.text)
+        self.assertIn("0.987", response.text)
+
+    def test_upload_rejects_out_of_range_values(self):
+        self.login()
+        response = self.client.post(
+            "/upload",
+            files={
+                "file": (
+                    "data.csv",
+                    (
+                        "Batch,Parameter,D0,D1\n"
+                        "500L_GMP,VIA,150,99.1\n"  # 150% viability is impossible
+                    ).encode("utf-8"),
+                    "text/csv",
+                )
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("rejected=1", response.headers["location"])
+        stored = self.read_data_file()
+        self.assertIsNone(stored["500L"]["viability"][0])
+        self.assertEqual(stored["500L"]["viability"][1], 99.1)
+
+    def test_session_survives_process_restart_with_stable_secret(self):
+        os.environ["MFG_SECRET_KEY"] = "stable-test-secret"
+        sys.modules.pop("app", None)
+        module = importlib.import_module("app")
+        client = TestClient(module.app)
+        login = client.post(
+            "/login",
+            data={"username": "demo-user", "password": "demo-pass"},
+            follow_redirects=False,
+        )
+        token = login.cookies["mfg_session"]
+
+        # Simulate a restart: reload the module so in-memory state is discarded.
+        sys.modules.pop("app", None)
+        restarted = importlib.import_module("app")
+        restarted_client = TestClient(restarted.app)
+        restarted_client.cookies.set("mfg_session", token)
+
+        response = restarted_client.get("/api/data")
+
+        self.assertEqual(response.status_code, 200)
+        os.environ.pop("MFG_SECRET_KEY", None)
+
     def test_write_data_falls_back_when_atomic_replace_hits_busy_device(self):
         data = self.app_module.build_default_data()
         data["500L"]["glucose"][5] = 6.66

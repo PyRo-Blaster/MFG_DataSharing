@@ -23,6 +23,9 @@ cp .env.example .env
 ```bash
 MFG_USERNAME=your-username
 MFG_PASSWORD=your-strong-password
+# Optional: set a stable secret so logins survive restarts and multiple workers.
+# Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+MFG_SECRET_KEY=your-random-secret
 ```
 
 3. Start the app locally:
@@ -49,4 +52,4 @@ http://127.0.0.1:8025
 
 - Runtime data is stored under `data/` and is ignored by Git.
 - Internal planning documents and private requirement materials are intentionally excluded from the public repository.
-- For server image deployment, see [server_deploy_image_mode.md](file:///Users/chenji/Desktop/CodeSpace/mfg_datalogger/docs/server_deploy_image_mode.md).
+- For server image deployment, see [docs/server_deploy_image_mode.md](docs/server_deploy_image_mode.md).
