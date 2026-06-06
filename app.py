@@ -1,5 +1,10 @@
+import base64
 import csv
+import hashlib
+import hmac
+import io
 import json
+import logging
 import os
 import secrets
 import tempfile
@@ -13,9 +18,47 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 
+logging.basicConfig(
+    level=os.environ.get("MFG_LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("mfg")
+
 DAYS = 18
 PARAM_KEYS = ["vcd", "viability", "glucose", "lactate", "nh4", "ph", "pco2", "osm"]
 BATCH_KEYS = ["50L", "2L", "satellite", "500L"]
+
+# Plausible value ranges per parameter for a CHO fed-batch culture. Uploaded
+# values outside these bounds are almost always unit or typo errors, so they are
+# rejected rather than merged. Bounds are intentionally generous.
+PARAM_RANGES: dict[str, tuple[float, float]] = {
+    "vcd": (0.0, 100.0),
+    "viability": (0.0, 100.0),
+    "glucose": (0.0, 30.0),
+    "lactate": (0.0, 20.0),
+    "nh4": (0.0, 30.0),
+    "ph": (5.0, 9.0),
+    "pco2": (0.0, 300.0),
+    "osm": (150.0, 600.0),
+}
+
+# Export labels round-trip back through the CSV import normalizers.
+CSV_BATCH_EXPORT = {
+    "50L": "50L_Pilot",
+    "2L": "2L_Scout",
+    "satellite": "5L_Satellite",
+    "500L": "500L_GMP",
+}
+CSV_PARAM_EXPORT = {
+    "vcd": "VCD",
+    "viability": "VIA",
+    "glucose": "Gluc",
+    "lactate": "Lac",
+    "nh4": "NH4",
+    "ph": "pH",
+    "pco2": "pCO2",
+    "osm": "OSM",
+}
 
 CSV_BATCH_MAP = {
     "500l_gmp": "500L",
@@ -48,7 +91,11 @@ CSV_PARAM_MAP = {
 WRITE_LOCK = Lock()
 SESSION_COOKIE_NAME = "mfg_session"
 SESSION_TTL_SECONDS = 8 * 60 * 60
-SESSIONS: dict[str, dict[str, Any]] = {}
+
+# Process-stable fallback so sessions survive within a running process. Set
+# MFG_SECRET_KEY in the environment to keep sessions valid across restarts and
+# across multiple worker processes.
+_EPHEMERAL_SECRET = secrets.token_bytes(32)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -139,23 +186,45 @@ def get_login_credentials() -> tuple[str, str]:
     return username, password
 
 
-def purge_expired_sessions() -> None:
-    now = datetime.now(timezone.utc).timestamp()
-    expired = [
-        session_id
-        for session_id, payload in SESSIONS.items()
-        if now - payload["created_at"] > SESSION_TTL_SECONDS
-    ]
-    for session_id in expired:
-        SESSIONS.pop(session_id, None)
+def get_secret_key() -> bytes:
+    configured = os.environ.get("MFG_SECRET_KEY")
+    if configured:
+        return configured.encode("utf-8")
+    return _EPHEMERAL_SECRET
+
+
+def sign_session(username: str) -> str:
+    created_at = int(datetime.now(timezone.utc).timestamp())
+    payload = f"{username}|{created_at}".encode("utf-8")
+    encoded = base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+    signature = hmac.new(get_secret_key(), encoded.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def verify_session(token: str) -> dict[str, Any] | None:
+    if not token or token.count(".") != 1:
+        return None
+    encoded, signature = token.split(".", 1)
+    expected = hmac.new(get_secret_key(), encoded.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return None
+    try:
+        padding = "=" * (-len(encoded) % 4)
+        payload = base64.urlsafe_b64decode(encoded + padding).decode("utf-8")
+        username, created_raw = payload.rsplit("|", 1)
+        created_at = int(created_raw)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if datetime.now(timezone.utc).timestamp() - created_at > SESSION_TTL_SECONDS:
+        return None
+    return {"username": username, "created_at": created_at}
 
 
 def get_active_session(request: Request) -> dict[str, Any] | None:
-    purge_expired_sessions()
-    session_id = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_id:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
         return None
-    return SESSIONS.get(session_id)
+    return verify_session(token)
 
 
 def require_login_api(request: Request) -> dict[str, Any]:
@@ -165,7 +234,7 @@ def require_login_api(request: Request) -> dict[str, Any]:
     return session
 
 
-def parse_csv_upload(text: str, data: dict[str, Any]) -> int:
+def parse_csv_upload(text: str, data: dict[str, Any]) -> tuple[int, int]:
     reader = csv.reader(text.splitlines())
     rows = list(reader)
     if len(rows) < 2:
@@ -182,6 +251,7 @@ def parse_csv_upload(text: str, data: dict[str, Any]) -> int:
         raise HTTPException(status_code=400, detail="CSV header must include D0..D17 columns")
 
     cells_updated = 0
+    cells_rejected = 0
     for row in rows[1:]:
         if len(row) < 2:
             continue
@@ -189,6 +259,7 @@ def parse_csv_upload(text: str, data: dict[str, Any]) -> int:
         param_key = normalize_param(row[1])
         if not batch_key or not param_key or batch_key == "50L":
             continue
+        low, high = PARAM_RANGES.get(param_key, (float("-inf"), float("inf")))
         for column_index, day in day_columns:
             if column_index >= len(row):
                 continue
@@ -199,10 +270,43 @@ def parse_csv_upload(text: str, data: dict[str, Any]) -> int:
                 value = float(raw_value)
             except ValueError:
                 continue
+            if not low <= value <= high:
+                cells_rejected += 1
+                logger.warning(
+                    "rejected out-of-range value batch=%s param=%s day=%s value=%s",
+                    batch_key,
+                    param_key,
+                    day,
+                    value,
+                )
+                continue
             data[batch_key][param_key][day] = value
             cells_updated += 1
     data["updated_at"] = now_iso()
-    return cells_updated
+    return cells_updated, cells_rejected
+
+
+def serialize_csv(data: dict[str, Any]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Batch", "Parameter"] + [f"D{day}" for day in range(DAYS)])
+    for batch_key in BATCH_KEYS:
+        for param_key in PARAM_KEYS:
+            values = data[batch_key][param_key]
+            cells = ["" if value is None else value for value in values]
+            writer.writerow([CSV_BATCH_EXPORT[batch_key], CSV_PARAM_EXPORT[param_key]] + cells)
+    return buffer.getvalue()
+
+
+@app.get("/health")
+def health() -> dict[str, Any]:
+    try:
+        with WRITE_LOCK:
+            data = load_data()
+        return {"status": "ok", "data_ok": True, "updated_at": data.get("updated_at")}
+    except Exception as exc:  # pragma: no cover - defensive health signal
+        logger.exception("health check failed")
+        return {"status": "degraded", "data_ok": False, "error": str(exc)}
 
 
 @app.get("/api/data")
@@ -210,6 +314,20 @@ def get_data(request: Request) -> dict[str, Any]:
     require_login_api(request)
     with WRITE_LOCK:
         return load_data()
+
+
+@app.get("/api/export")
+def export_csv(request: Request) -> Response:
+    require_login_api(request)
+    with WRITE_LOCK:
+        data = load_data()
+    csv_text = serialize_csv(data)
+    filename = f"mfg-data-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.csv"
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/upload")
@@ -227,10 +345,13 @@ async def upload_csv(request: Request, file: UploadFile = File(...)) -> Response
 
     with WRITE_LOCK:
         data = load_data()
-        cells_updated = parse_csv_upload(text, data)
+        cells_updated, cells_rejected = parse_csv_upload(text, data)
         write_data(data)
 
-    return RedirectResponse(url=f"/?uploaded={cells_updated}", status_code=303)
+    logger.info("csv upload merged=%s rejected=%s", cells_updated, cells_rejected)
+    return RedirectResponse(
+        url=f"/?uploaded={cells_updated}&rejected={cells_rejected}", status_code=303
+    )
 
 
 @app.get("/")
@@ -253,15 +374,11 @@ def login(username: str = Form(...), password: str = Form(...)) -> Response:
     if username != expected_username or password != expected_password:
         return FileResponse(STATIC_DIR / "login.html", status_code=401)
 
-    session_id = secrets.token_urlsafe(32)
-    SESSIONS[session_id] = {
-        "username": username,
-        "created_at": datetime.now(timezone.utc).timestamp(),
-    }
+    token = sign_session(username)
     response = RedirectResponse(url="/", status_code=303)
     response.set_cookie(
         SESSION_COOKIE_NAME,
-        session_id,
+        token,
         httponly=True,
         samesite="lax",
         max_age=SESSION_TTL_SECONDS,
@@ -271,9 +388,6 @@ def login(username: str = Form(...), password: str = Form(...)) -> Response:
 
 @app.get("/logout")
 def logout(request: Request) -> RedirectResponse:
-    session_id = request.cookies.get(SESSION_COOKIE_NAME)
-    if session_id:
-        SESSIONS.pop(session_id, None)
     response = RedirectResponse(url="/login", status_code=303)
     response.delete_cookie(SESSION_COOKIE_NAME)
     return response

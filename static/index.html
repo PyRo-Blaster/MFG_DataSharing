@@ -293,6 +293,7 @@
         <div class="button-row">
           <button class="btn primary" type="submit">Upload CSV</button>
           <button class="btn" id="refreshBtn" type="button">Refresh Now</button>
+          <a class="btn" href="/api/export">Download Data CSV</a>
           <a class="btn" href="/static/data_template.csv" download>Download CSV Template</a>
           <a class="btn" href="/logout">Logout</a>
         </div>
@@ -470,10 +471,21 @@ function renderCharts() {
 function readUploadCountFromUrl(url) {
   try {
     const parsed = new URL(url, window.location.origin);
-    return parsed.searchParams.get("uploaded");
+    return {
+      uploaded: parsed.searchParams.get("uploaded"),
+      rejected: parsed.searchParams.get("rejected")
+    };
   } catch (error) {
-    return null;
+    return { uploaded: null, rejected: null };
   }
+}
+
+function uploadSummary(uploaded, rejected) {
+  const merged = uploaded
+    ? `Upload complete. ${uploaded} cells merged into data.json.`
+    : "Upload complete.";
+  const skipped = Number(rejected) > 0 ? ` ${rejected} out-of-range value(s) rejected.` : "";
+  return `${merged}${skipped}`;
 }
 
 async function readErrorMessage(response) {
@@ -537,14 +549,11 @@ async function handleUpload(event) {
       throw new Error(await readErrorMessage(response));
     }
 
-    const uploaded = readUploadCountFromUrl(response.url);
+    const { uploaded, rejected } = readUploadCountFromUrl(response.url);
     fileInput.value = "";
     document.getElementById("fileName").textContent = "No file selected";
     await fetchData(false);
-    setStatus(
-      uploaded ? `Upload complete. ${uploaded} cells merged into data.json.` : "Upload complete.",
-      "success"
-    );
+    setStatus(uploadSummary(uploaded, rejected), Number(rejected) > 0 ? "" : "success");
   } catch (error) {
     setStatus(error.message || "Upload failed.", "error");
   }
@@ -553,9 +562,11 @@ async function handleUpload(event) {
 function syncQueryState() {
   const params = new URLSearchParams(window.location.search);
   const uploaded = params.get("uploaded");
-  if (uploaded) {
-    setStatus(`Upload complete. ${uploaded} cells merged into data.json.`, "success");
+  const rejected = params.get("rejected");
+  if (uploaded !== null) {
+    setStatus(uploadSummary(uploaded, rejected), Number(rejected) > 0 ? "" : "success");
     params.delete("uploaded");
+    params.delete("rejected");
     const next = params.toString();
     const url = `${window.location.pathname}${next ? `?${next}` : ""}`;
     window.history.replaceState({}, "", url);
