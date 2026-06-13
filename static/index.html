@@ -309,7 +309,7 @@
 const PARAM_KEYS = ["vcd", "viability", "glucose", "lactate", "nh4", "ph", "pco2", "osm"];
 const PARAM_META = {
   vcd:       { title: "Viable Cell Density", unit: "x10^6/mL", tag: "VCD",  yLabel: "VCD (x10^6/mL)",  fmt: value => value.toFixed(2) },
-  viability: { title: "Cell Viability",     unit: "%",        tag: "VIA",  yLabel: "Viability (%)",    fmt: value => value.toFixed(1), yMin: 75 },
+  viability: { title: "Cell Viability",     unit: "%",        tag: "VIA",  yLabel: "Viability (%)",    fmt: value => value.toFixed(1), yMin: 0, yMax: 100 },
   glucose:   { title: "Glucose",            unit: "g/L",      tag: "Gluc", yLabel: "Glucose (g/L)",    fmt: value => value.toFixed(2) },
   lactate:   { title: "Lactate",            unit: "g/L",      tag: "Lac",  yLabel: "Lactate (g/L)",    fmt: value => value.toFixed(2) },
   nh4:       { title: "Ammonium",           unit: "mmol/L",   tag: "NH4+", yLabel: "NH4+ (mmol/L)",    fmt: value => value.toFixed(2) },

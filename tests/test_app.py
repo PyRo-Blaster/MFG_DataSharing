@@ -248,6 +248,16 @@ class MFGDataSharingAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         os.environ.pop("MFG_SECRET_KEY", None)
 
+    def test_index_page_uses_zero_based_viability_axis(self):
+        self.login()
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('viability: { title: "Cell Viability"', response.text)
+        self.assertIn("yMin: 0", response.text)
+        self.assertIn("yMax: 100", response.text)
+
     def test_write_data_falls_back_when_atomic_replace_hits_busy_device(self):
         data = self.app_module.build_default_data()
         data["500L"]["glucose"][5] = 6.66
